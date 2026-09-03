@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>회전체 생성기 — 이중 회전으로 만드는 입체</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  :root{
+    --bg:#070c14;
+    --panel:#0f1a2ce6;
+    --panel-border:rgba(255,255,255,0.08);
+    --line:#1e2c46;
+    --text:#eaf0f7;
+    --muted:#7f92ad;
+    --amber:#e8a33d;
+    --teal:#3fc7b8;
+    --dot:#f4f7fb;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; height:100%; background:var(--bg); overflow:hidden;
+    color:var(--text);
+    font-family:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #scene{position:fixed; inset:0; display:block; touch-action:none;}
+  #vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:1;
+    background:radial-gradient(ellipse at 50% 45%, rgba(7,12,20,0) 40%, rgba(4,7,12,0.55) 100%);
+  }
+  .ui{position:fixed; z-index:2;}
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-radius:16px;
+    backdrop-filter:blur(16px) saturate(1.1);
+    -webkit-backdrop-filter:blur(16px) saturate(1.1);
+    box-shadow:0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+    opacity:0; transform:translateY(-8px);
+    animation:riseIn .9s cubic-bezier(.2,.8,.2,1) .25s forwards;
+  }
+  @keyframes riseIn{ to{opacity:1; transform:translateY(0);} }
+
+  #hud{ top:22px; left:22px; width:min(360px, 84vw); padding:20px 22px 18px; }
+  #hud h1{
+    margin:0 0 2px; font-size:15px; font-weight:600; letter-spacing:-0.01em; color:var(--text);
+  }
+  #hud .sub{ margin:0 0 14px; font-size:11.5px; color:var(--muted); }
+
+  .tabs{ display:flex; gap:6px; margin-bottom:14px; }
+  .tab{
+    flex:1; padding:8px 0; text-align:center; font-size:13px; font-weight:600;
+    color:var(--muted); background:rgba(255,255,255,0.03); border:1px solid var(--panel-border);
+    border-radius:9px; cursor:pointer; transition:color .2s ease, background .2s ease, border-color .2s ease;
+    user-select:none;
+  }
+  .tab:hover{ color:var(--text); }
+  .tab.active{ color:#0b1220; background:var(--amber); border-color:var(--amber); }
+
+  .statement{
+    font-size:12.5px; line-height:1.55; color:#c4d0e2; margin:0 0 16px;
+    padding-bottom:14px; border-bottom:1px solid var(--line);
+  }
+
+  .stage-track{ position:relative; display:flex; justify-content:space-between; margin:2px 0 10px; }
+  .stage-line{ position:absolute; top:5px; left:12%; right:12%; height:2px; background:var(--line); z-index:0; border-radius:2px; overflow:hidden;}
+  .stage-line-fill{ height:100%; width:0%; background:var(--amber); transition:width .5s cubic-bezier(.3,.7,.3,1), background .5s ease; }
+  .stage-item{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:6px; width:25%; }
+  .stage-item .dot{ width:9px; height:9px; border-radius:50%; background:var(--bg); border:2px solid var(--line); transition:all .3s ease; }
+  .stage-item.active .dot{ border-color:var(--amber); background:var(--amber); box-shadow:0 0 10px 1px rgba(232,163,61,0.6); }
+  .stage-item.done .dot{ border-color:var(--teal); background:var(--teal); }
+  .stage-item .dim{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); transition:color .3s ease; }
+  .stage-item.active .dim{ color:var(--amber); }
+  .stage-item.done .dim{ color:var(--teal); }
+  .stage-item .lbl{ font-size:11.5px; color:var(--muted); transition:color .3s ease; }
+  .stage-item.active .lbl{ color:var(--text); }
+
+  #stageText{ min-height:32px; margin:8px 0 0; font-size:12.5px; line-height:1.5; color:#c4d0e2; }
+
+  #hint{
+    bottom:20px; left:22px; padding:11px 16px; border-radius:12px;
+    display:flex; align-items:center; gap:12px;
+  }
+  #hint p{ margin:0; font-size:11.5px; color:var(--muted); line-height:1.5; max-width:300px; }
+  #hint kbd{
+    display:inline-block; padding:1px 6px; border-radius:5px; font-family:'JetBrains Mono',monospace;
+    font-size:10.5px; background:rgba(255,255,255,0.08); border:1px solid var(--panel-border); color:var(--text);
+  }
+  #replayBtn{
+    flex:none; width:38px; height:38px; border-radius:10px; border:1px solid var(--panel-border);
+    background:rgba(255,255,255,0.04); color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .2s ease, transform .2s ease;
+  }
+  #replayBtn:hover{ background:rgba(255,255,255,0.09); }
+  #replayBtn:active{ transform:scale(0.92); }
+  #replayBtn svg{ width:16px; height:16px; }
+
+  #volumeBox{
+    bottom:22px; right:22px; padding:18px 22px; text-align:right; min-width:180px;
+    opacity:0; transform:translateY(10px) scale(0.97); transition:opacity .55s cubic-bezier(.2,.8,.2,1), transform .55s cubic-bezier(.2,.8,.2,1);
+  }
+  #volumeBox.visible{ opacity:1; transform:translateY(0) scale(1); }
+  #volumeBox .vlabel{ font-size:10.5px; color:var(--muted); letter-spacing:0.02em; margin-bottom:4px; }
+  #volumeBox .vnum{ font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:600; color:var(--teal); line-height:1; }
+  #volumeBox .vnote{ margin-top:8px; font-size:11px; color:var(--muted); line-height:1.5; max-width:220px; }
+  .frac{ display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; margin:0 3px; line-height:1.05; transform:translateY(1px);}
+  .frac .num{ font-size:0.62em; padding-bottom:1px; border-bottom:1.5px solid var(--teal); }
+  .frac .den{ font-size:0.62em; padding-top:1px; }
+
+  @media (max-width:640px){
+    #hud{ width:calc(100vw - 32px); left:16px; top:16px; padding:16px 18px; }
+    #hint{ left:16px; bottom:16px; }
+    #hint p{ display:none; }
+    #volumeBox{ right:16px; bottom:16px; padding:14px 16px; }
+    #volumeBox .vnum{ font-size:21px; }
+    #volumeBox .vnote{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="vignette"></div>
+
+  <div id="hud" class="ui panel">
+    <h1>회전체 생성기</h1>
+    <p class="sub">점 → 선 → 곡면 → 입체, 차원이 쌓이는 과정을 눈으로 본다</p>
+
+    <div class="tabs">
+      <div class="tab active" id="tab1">문제 1 · 원기둥의 이중회전</div>
+    </div>
+    <div class="tabs">
+      <div class="tab" id="tab2">문제 2 · 곡선의 회전과 부피</div>
+    </div>
+
+    <p class="statement" id="statementText"></p>
+
+    <div class="stage-track">
+      <div class="stage-line"><div class="stage-line-fill" id="stageLineFill"></div></div>
+      <div class="stage-item" data-i="0"><span class="dot"></span><span class="dim">0D</span><span class="lbl">점</span></div>
+      <div class="stage-item" data-i="1"><span class="dot"></span><span class="dim">1D</span><span class="lbl">선·곡선</span></div>
+      <div class="stage-item" data-i="2"><span class="dot"></span><span class="dim">2D</span><span class="lbl">곡면</span></div>
+      <div class="stage-item" data-i="3"><span class="dim">3D</span><span class="dot"></span><span class="lbl">입체</span></div>
+    </div>
+    <p id="stageText"></p>
+  </div>
+
+  <div id="hint" class="ui panel">
+    <button id="replayBtn" title="다시 생성">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+    </button>
+    <p>드래그로 회전, 스크롤로 확대 — 실시간으로 자유롭게 살펴보세요.<br><kbd>Space</kbd> 를 누르면 지우고 처음부터 다시 만들어져요.</p>
+  </div>
+
+  <div id="volumeBox" class="ui panel">
+    <div class="vlabel">부피</div>
+    <div class="vnum" id="vnum"></div>
+    <div class="vnote" id="vnote"></div>
+  </div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------------------------------------------------------------
+   colors
+--------------------------------------------------------------- */
+const COLOR_GEN   = 0xe8a33d;  // amber — the generating (rotating) object
+const COLOR_SOLID = 0x3fc7b8;  // teal  — the finished solid
+const COLOR_DOT   = 0xf4f7fb;  // defining points
+const COLOR_REF   = 0x8fa0be;  // reference line l
+const AX_X = 0xe0625c, AX_Y = 0x62c37a, AX_Z = 0x5fa8e0;
+
+/* ---------------------------------------------------------------
+   renderer / scene / camera
+--------------------------------------------------------------- */
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070c14);
+scene.fog = new THREE.FogExp2(0x070c14, 0.052);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(9.5, 7, 11);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.4, 0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.55;
+controls.minDistance = 3;
+controls.maxDistance = 22;
+
+function resize(){
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+/* lights */
+scene.add(new THREE.AmbientLight(0x8fa8c9, 0.55));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.15); keyLight.position.set(4,6,5); scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0x5ad1c9, 0.55); rimLight.position.set(-5,-2,-4); scene.add(rimLight);
+const fillLight = new THREE.DirectionalLight(0xe8a33d, 0.22); fillLight.position.set(-3,4,-5); scene.add(fillLight);
+
+/* floor grid */
+const grid = new THREE.GridHelper(12, 24, 0x24334f, 0x141f33);
+grid.position.y = -2.3;
+grid.material.transparent = true;
+grid.material.opacity = 0.3;
+scene.add(grid);
+
+/* ---------------------------------------------------------------
+   axes (math labels: three.X -> x, three.Y(up) -> z, three.Z -> y)
+--------------------------------------------------------------- */
+function makeTextSprite(text, hexColor){
+  const c = document.createElement('canvas');
+  const scale = 8, size = 48;
+  c.width = size*scale; c.height = size*scale;
+  const ctx = c.getContext('2d');
+  ctx.font = `700 ${size*scale*0.62}px Pretendard, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = hexColor;
+  ctx.fillText(text, c.width/2, c.height/2 + size*scale*0.03);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.55, 0.55, 1);
+  return sprite;
+}
+
+function hexToCss(n){ return '#' + n.toString(16).padStart(6,'0'); }
+
+(function buildAxes(){
+  const group = new THREE.Group();
+  const LEN = 3, NEG = 1.5;
+  [
+    { dir:new THREE.Vector3(1,0,0), color:AX_X, label:'x' },
+    { dir:new THREE.Vector3(0,1,0), color:AX_Y, label:'z' },
+    { dir:new THREE.Vector3(0,0,1), color:AX_Z, label:'y' },
+  ].forEach(a=>{
+    const arrow = new THREE.ArrowHelper(a.dir, new THREE.Vector3(0,0,0), LEN, a.color, 0.24, 0.12);
+    arrow.line.material.transparent = true; arrow.line.material.opacity = 0.85;
+    group.add(arrow);
+    const negGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), a.dir.clone().multiplyScalar(-NEG)]);
+    const negLine = new THREE.Line(negGeo, new THREE.LineBasicMaterial({ color:a.color, transparent:true, opacity:0.3 }));
+    group.add(negLine);
+    const label = makeTextSprite(a.label, hexToCss(a.color));
+    label.position.copy(a.dir.clone().multiplyScalar(LEN + 0.4));
+    group.add(label);
+  });
+  scene.add(group);
+})();
+
+/* content group: everything generated by the animation lives here so it can be wiped */
+const contentGroup = new THREE.Group();
+scene.add(contentGroup);
+
+/* ---------------------------------------------------------------
+   small helpers
+--------------------------------------------------------------- */
+function ease(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+function tween(duration, onUpdate, isCancelled){
+  isCancelled = isCancelled || (()=>false);
+  return new Promise(resolve=>{
+    const start = performance.now();
+    function frame(now){
+      if(isCancelled()){ resolve('cancelled'); return; }
+      const raw = Math.min(1, (now-start)/duration);
+      onUpdate(ease(raw), raw);
+      if(raw < 1){ requestAnimationFrame(frame); } else { resolve('done'); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+function wait(ms, isCancelled){ return tween(ms, ()=>{}, isCancelled); }
+
+function disposeObject(mesh){
+  if(!mesh) return;
+  if(mesh.geometry) mesh.geometry.dispose();
+  if(mesh.material){
+    if(Array.isArray(mesh.material)) mesh.material.forEach(m=>m.dispose());
+    else mesh.material.dispose();
+  }
+}
+function clearContentGroup(){
+  contentGroup.traverse(obj=>disposeObject(obj));
+  while(contentGroup.children.length) contentGroup.remove(contentGroup.children[0]);
+}
+
+function makeSphere(pos, color){
+  const geo = new THREE.SphereGeometry(0.065, 24, 24);
+  const mat = new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:0.6, roughness:0.3, metalness:0.1 });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(pos);
+  return m;
+}
+
+function makeTube(points, radius, color, opacity){
+  let pts = points.length >= 2 ? points : [points[0], points[0].clone().add(new THREE.Vector3(0.001,0,0))];
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const tubularSeg = Math.max(2, pts.length * 2);
+  const geo = new THREE.TubeGeometry(curve, tubularSeg, radius, 8, false);
+  const mat = new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:0.45, roughness:0.35, metalness:0.05, transparent:true, opacity, side:THREE.DoubleSide });
+  return new THREE.Mesh(geo, mat);
+}
+
+function makeDashedLine(p1, p2, color){
+  const geo = new THREE.BufferGeometry().setFromPoints([p1,p2]);
+  const mat = new THREE.LineDashedMaterial({ color, dashSize:0.12, gapSize:0.09, transparent:true, opacity:0 });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  return line;
+}
+
+function makeLatheMesh(profile2D, phiLength, color, opacity, rotateAxis){
+  const geo = new THREE.LatheGeometry(profile2D, 64, 0, Math.max(0.0008, phiLength));
+  if(rotateAxis === 'x') geo.rotateZ(-Math.PI/2);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({
+    color, emissive:color, emissiveIntensity:0.16, roughness:0.28, metalness:0.08,
+    transparent:true, opacity, side:THREE.DoubleSide
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+/* ---------------------------------------------------------------
+   exact profiles derived from the two problems
+--------------------------------------------------------------- */
+// Problem 1 — surface A: segment at radius 1, z(math) from 1 to 2, revolved about the z-axis
+const P1_SURFACE_PROFILE = [ new THREE.Vector2(1,1), new THREE.Vector2(1,2) ];
+
+// Problem 1 — solid: A revolved about the x-axis. Cross-section at x is an annulus:
+// r_min(x) = sqrt(2 - x^2), r_max(x) = sqrt(5 - x^2), x in [-1,1]  ->  volume = 6*pi
+function problem1SolidProfile(steps=48){
+  const pts = [];
+  for(let i=0;i<=steps;i++){ const x=-1+2*i/steps; pts.push(new THREE.Vector2(Math.sqrt(2-x*x), x)); }
+  pts.push(new THREE.Vector2(Math.sqrt(5-1*1), 1));
+  for(let i=0;i<=steps;i++){ const x=1-2*i/steps; pts.push(new THREE.Vector2(Math.sqrt(5-x*x), x)); }
+  pts.push(new THREE.Vector2(Math.sqrt(2-1*1), -1));
+  return pts;
+}
+
+// Problem 2 — wall: curve y=1-z^2 revolved about line l (through (1,0,0), parallel to z-axis).
+// distance from l at height z:  R(z) = sqrt(1 + (1-z^2)^2), z in [-1,1]  ->  volume = 46*pi/15
+function problem2WallProfile(steps=64){
+  const pts = [];
+  for(let i=0;i<=steps;i++){ const z=-1+2*i/steps; pts.push(new THREE.Vector2(Math.sqrt(1+Math.pow(1-z*z,2)), z)); }
+  return pts;
+}
+
+/* ---------------------------------------------------------------
+   captions
+--------------------------------------------------------------- */
+const CAPTIONS = {
+  1: [
+    '점 (1, 0, 1)과 (1, 0, 2)가 나타나요.',
+    '두 점을 이은 선분 I.',
+    'I를 z축 둘레로 회전 — 반지름 1인 원기둥 곡면 A가 만들어져요.',
+    'A를 다시 x축 둘레로 회전 — 곡면이 회전하며 입체를 쓸고 지나가요.',
+  ],
+  2: [
+    '점 (1, 0, 0)을 지나 z축에 평행한 직선 l.',
+    'yz평면의 곡선 y = 1 − z² (−1 ≤ z ≤ 1).',
+    '곡선을 l 둘레로 회전 — 표주박 같은 곡면이 생겨요.',
+    'z = 1, z = −1 평면으로 위아래를 막아 부피를 완성해요.',
+  ],
+};
+const STATEMENTS = {
+  1: '점 (1,0,1), (1,0,2)를 이은 선분 I를 z축으로 1회전시켜 곡면 A를 만들고, A를 다시 x축으로 1회전시킨 입체의 부피를 구해요.',
+  2: '점 (1,0,0)을 지나 z축에 평행한 직선 l 둘레로 곡선 y = 1−z² (−1≤z≤1)을 회전시켜 얻은 곡면과, 평면 z=1·z=−1로 둘러싸인 부분의 부피를 구해요.',
+};
+
+/* ---------------------------------------------------------------
+   UI wiring
+--------------------------------------------------------------- */
+const stageItems = [...document.querySelectorAll('.stage-item')];
+const stageLineFill = document.getElementById('stageLineFill');
+const stageText = document.getElementById('stageText');
+const statementText = document.getElementById('statementText');
+const volumeBox = document.getElementById('volumeBox');
+const vnum = document.getElementById('vnum');
+const vnote = document.getElementById('vnote');
+const tab1 = document.getElementById('tab1');
+const tab2 = document.getElementById('tab2');
+
+function setStageUI(problem, idx){
+  stageItems.forEach((el,i)=>{
+    el.classList.toggle('active', i===idx);
+    el.classList.toggle('done', i<idx);
+  });
+  stageLineFill.style.width = (idx/3*100) + '%';
+  stageLineFill.style.background = idx>=3 ? hexToCss(COLOR_SOLID) : hexToCss(COLOR_GEN);
+  stageText.textContent = CAPTIONS[problem][idx];
+}
+function updateTabsUI(){
+  tab1.classList.toggle('active', activeProblem===1);
+  tab2.classList.toggle('active', activeProblem===2);
+  statementText.textContent = STATEMENTS[activeProblem];
+}
+function fracHTML(num, den){
+  return `V = <span class="frac"><span class="num">${num}π</span><span class="den">${den}</span></span>`;
+}
+function showVolume(html, note){
+  vnum.innerHTML = html;
+  vnote.textContent = note;
+  volumeBox.classList.add('visible');
+}
+function hideVolume(){
+  volumeBox.classList.remove('visible');
+}
+
+/* ---------------------------------------------------------------
+   playback state
+--------------------------------------------------------------- */
+let activeProblem = 1;
+let runToken = 0;
+
+async function playProblem1(token){
+  const dead = ()=> token !== runToken;
+  setStageUI(1, 0);
+
+  const P1 = new THREE.Vector3(1,1,0), P2 = new THREE.Vector3(1,2,0);
+  const s1 = makeSphere(P1, COLOR_DOT), s2 = makeSphere(P2, COLOR_DOT);
+  s1.scale.setScalar(0.001); s2.scale.setScalar(0.001);
+  contentGroup.add(s1, s2);
+  await tween(500, t=>{ s1.scale.setScalar(Math.max(0.001,t)); s2.scale.setScalar(Math.max(0.001,t)); }, dead);
+  if(dead()) return;
+
+  setStageUI(1, 1);
+  const dense = new THREE.CatmullRomCurve3([P1,P2]).getPoints(30);
+  let segMesh = null;
+  await tween(700, t=>{
+    if(segMesh){ disposeObject(segMesh); contentGroup.remove(segMesh); }
+    const n = Math.max(2, Math.round(dense.length*t));
+    segMesh = makeTube(dense.slice(0,n), 0.03, COLOR_GEN, 0.95);
+    contentGroup.add(segMesh);
+  }, dead);
+  if(dead()) return;
+
+  setStageUI(1, 2);
+  const penGroupA = new THREE.Group();
+  contentGroup.remove(segMesh);
+  penGroupA.add(segMesh);
+  contentGroup.add(penGroupA);
+
+  let surfaceMesh = null;
+  await tween(1900, t=>{
+    const phi = t*Math.PI*2;
+    penGroupA.rotation.y = phi;
+    if(surfaceMesh){ disposeObject(surfaceMesh); contentGroup.remove(surfaceMesh); }
+    surfaceMesh = makeLatheMesh(P1_SURFACE_PROFILE, phi, COLOR_GEN, 0.34, 'y');
+    contentGroup.add(surfaceMesh);
+  }, dead);
+  if(dead()) return;
+  await tween(400, t=>{ segMesh.material.opacity = 0.95*(1-t) + 0.12*t; }, dead);
+  penGroupA.rotation.y = 0;
+
+  setStageUI(1, 3);
+  const penGroupB = new THREE.Group();
+  contentGroup.remove(surfaceMesh);
+  penGroupB.add(surfaceMesh);
+  contentGroup.add(penGroupB);
+  surfaceMesh.material.opacity = 0.34;
+
+  const solidProfile = problem1SolidProfile(48);
+  let solidMesh = null;
+  await tween(2500, t=>{
+    const phi = t*Math.PI*2;
+    penGroupB.rotation.x = phi;
+    if(solidMesh){ disposeObject(solidMesh); contentGroup.remove(solidMesh); }
+    solidMesh = makeLatheMesh(solidProfile, phi, COLOR_SOLID, 0.55, 'x');
+    contentGroup.add(solidMesh);
+  }, dead);
+  if(dead()) return;
+  await tween(500, t=>{ surfaceMesh.material.opacity = 0.34*(1-t) + 0.07*t; }, dead);
+  if(dead()) return;
+
+  showVolume('V = 6π', '어느 위치에서 x축에 수직으로 잘라도, 단면(고리 모양)의 넓이는 항상 3π로 일정해요.');
+}
+
+async function playProblem2(token){
+  const dead = ()=> token !== runToken;
+  setStageUI(2, 0);
+
+  const Pl = new THREE.Vector3(1,0,0);
+  const s1 = makeSphere(Pl, COLOR_DOT);
+  s1.scale.setScalar(0.001);
+  contentGroup.add(s1);
+  await tween(450, t=>{ s1.scale.setScalar(Math.max(0.001,t)); }, dead);
+  if(dead()) return;
+
+  const lLine = makeDashedLine(new THREE.Vector3(1,-2.2,0), new THREE.Vector3(1,2.2,0), COLOR_REF);
+  contentGroup.add(lLine);
+  await tween(500, t=>{ lLine.material.opacity = 0.55*t; }, dead);
+  if(dead()) return;
+
+  setStageUI(2, 1);
+  const N = 60;
+  const curveLocal = [];
+  for(let i=0;i<=N;i++){ const z=-1+2*i/N; curveLocal.push(new THREE.Vector3(-1, z, 1-z*z)); }
+  const axisGroup = new THREE.Group();
+  axisGroup.position.set(1,0,0);
+  contentGroup.add(axisGroup);
+
+  let curveMesh = null;
+  await tween(950, t=>{
+    if(curveMesh){ disposeObject(curveMesh); axisGroup.remove(curveMesh); }
+    const n = Math.max(2, Math.round((N+1)*t));
+    curveMesh = makeTube(curveLocal.slice(0,n), 0.03, COLOR_GEN, 0.95);
+    axisGroup.add(curveMesh);
+  }, dead);
+  if(dead()) return;
+
+  setStageUI(2, 2);
+  const penGroup = new THREE.Group();
+  axisGroup.remove(curveMesh);
+  penGroup.add(curveMesh);
+  axisGroup.add(penGroup);
+
+  const wallProfile = problem2WallProfile(64);
+  let wallMesh = null;
+  await tween(2100, t=>{
+    const phi = t*Math.PI*2;
+    penGroup.rotation.y = phi;
+    if(wallMesh){ disposeObject(wallMesh); axisGroup.remove(wallMesh); }
+    wallMesh = makeLatheMesh(wallProfile, phi, COLOR_GEN, 0.32, 'y');
+    axisGroup.add(wallMesh);
+  }, dead);
+  if(dead()) return;
+  await tween(400, t=>{ curveMesh.material.opacity = 0.95*(1-t) + 0.12*t; }, dead);
+  penGroup.rotation.y = 0;
+
+  setStageUI(2, 3);
+  const capTopGeo = new THREE.CircleGeometry(1, 48); capTopGeo.rotateX(-Math.PI/2);
+  const capTop = new THREE.Mesh(capTopGeo, new THREE.MeshStandardMaterial({ color:COLOR_GEN, emissive:COLOR_GEN, emissiveIntensity:0.16, transparent:true, opacity:0, side:THREE.DoubleSide, roughness:0.3 }));
+  capTop.position.y = 1;
+  const capBotGeo = new THREE.CircleGeometry(1, 48); capBotGeo.rotateX(-Math.PI/2);
+  const capBot = new THREE.Mesh(capBotGeo, capTop.material.clone());
+  capBot.position.y = -1;
+  capTop.scale.set(0.001,1,0.001); capBot.scale.set(0.001,1,0.001);
+  axisGroup.add(capTop, capBot);
+
+  const colGen = new THREE.Color(COLOR_GEN), colSolid = new THREE.Color(COLOR_SOLID);
+  await tween(950, t=>{
+    capTop.scale.set(Math.max(0.001,t),1,Math.max(0.001,t));
+    capBot.scale.set(Math.max(0.001,t),1,Math.max(0.001,t));
+    capTop.material.opacity = 0.55*t; capBot.material.opacity = 0.55*t;
+    const col = colGen.clone().lerp(colSolid, t);
+    capTop.material.color.copy(col); capTop.material.emissive.copy(col);
+    capBot.material.color.copy(col); capBot.material.emissive.copy(col);
+    wallMesh.material.color.copy(col); wallMesh.material.emissive.copy(col);
+    wallMesh.material.opacity = 0.32 + 0.22*t;
+  }, dead);
+  if(dead()) return;
+
+  showVolume(fracHTML(46,15), '높이 z에서 단면은 반지름 √(1+(1−z²)²)인 원이에요. −1≤z≤1에서 이 넓이를 적분해요.');
+}
+
+async function resetAndPlay(){
+  runToken += 1;
+  const token = runToken;
+  clearContentGroup();
+  hideVolume();
+  setStageUI(activeProblem, 0);
+  stageText.textContent = '';
+  await wait(150, ()=> token !== runToken);
+  if(token !== runToken) return;
+  if(activeProblem === 1) await playProblem1(token);
+  else await playProblem2(token);
+}
+
+/* ---------------------------------------------------------------
+   input
+--------------------------------------------------------------- */
+tab1.addEventListener('click', ()=>{ activeProblem = 1; updateTabsUI(); resetAndPlay(); });
+tab2.addEventListener('click', ()=>{ activeProblem = 2; updateTabsUI(); resetAndPlay(); });
+document.getElementById('replayBtn').addEventListener('click', resetAndPlay);
+addEventListener('keydown', e=>{
+  if(e.code === 'Space'){
+    e.preventDefault();
+    resetAndPlay();
+  }
+});
+
+/* ---------------------------------------------------------------
+   boot
+--------------------------------------------------------------- */
+updateTabsUI();
+setStageUI(activeProblem, 0);
+
+const camFrom = new THREE.Vector3(9.5,7,11);
+const camTo = new THREE.Vector3(6,4.4,7.2);
+tween(2000, t=>{ camera.position.lerpVectors(camFrom, camTo, t); });
+resetAndPlay();
+
+function loop(){
+  requestAnimationFrame(loop);
+  controls.update();
+  renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>
